@@ -1,129 +1,733 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <title>Bike Station Heatmap</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>
-    #map { height: 600px; }
-    #controls { text-align: center; margin: 10px; }
-    button { margin: 5px; padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #ddd; }
-  </style>
-</head>
-<body>
-  <h2 style="text-align:center;">Bike Station Heatmap</h2>
-  <div id="map"></div>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Controls -->
-  <div id="controls">
-    <label for="intensitySlider">Intensity: </label>
-    <input type="range" id="intensitySlider" min="0.2" max="3" step="0.1" value="1">
-    <span id="sliderValue">1.0</span>
-    <br>
-    <button onclick="toggleLayer(startsLayer)">Toggle Starts</button>
-    <button onclick="toggleLayer(endsLayer)">Toggle Ends</button>
-    <button onclick="toggleLayer(totalLayer)">Toggle Total</button>
-    <button onclick="toggleLayer(markers)">Toggle Markers</button>
-  </div>
+    <title>V LookUp</title>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-
-  <script>
-    // Map setup
-    const map = L.map('map').setView([39.95, -75.16], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    let startsLayer, endsLayer, totalLayer, markers;
-    let stations = [];
-    let multiplier = 1;
-
-    // Load Google Sheet CSV via PapaParse
-    Papa.parse("https://docs.google.com/spreadsheets/d/e/2PACX-1vS6hPbcRfXvDoEdor5z93DSF8_gaL7XDragNFXxtShmDZyEofT5lt0XahtlNDeJa36EP_B4ErL31u0n/pub?gid=1084593066&single=true&output=csv", {
-      download: true,
-      header: true,
-      skipEmptyLines: true,
-      complete: function(results) {
-        console.log("Raw parsed:", results.data);
-
-        // Clean + filter stations
-        stations = results.data.map(r => {
-          return {
-            lat: parseFloat((r.start_lat || "").trim()),
-            lon: parseFloat((r.start_lon || "").trim()),
-            name: (r.Station_Name || "").trim(),
-            starts: parseInt(r.Station_Starts || 0, 10),
-            ends: parseInt(r.Station_Ends || 0, 10),
-            activity: parseInt(r.Station_Activity || 0, 10)
-          };
-        }).filter(r => !isNaN(r.lat) && !isNaN(r.lon));
-
-        console.log("Cleaned stations:", stations);
-
-        if (stations.length === 0) {
-          alert("No valid stations found. Check CSV headers!");
-          return;
+    <style>
+        * {
+            box-sizing: border-box;
         }
 
-        // Build heatmap datasets
-        const heatData = makeHeat(multiplier);
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            color: #222;
+        }
 
-        startsLayer = L.heatLayer(heatData.starts, { radius: 25, blur: 15 }).addTo(map);
-        endsLayer   = L.heatLayer(heatData.ends,   { radius: 25, blur: 15 });
-        totalLayer  = L.heatLayer(heatData.total,  { radius: 25, blur: 15 });
+        /* Main layout */
+        .container {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+            padding: 40px;
+            gap: 20px;
+        }
 
-        // Markers
-        markers = L.layerGroup(stations.map(s =>
-          L.circleMarker([s.lat, s.lon], {
-            radius: 4, color: "blue", fillOpacity: 0.7
-          }).bindPopup(`<b>${s.name}</b><br>
-            Starts: ${s.starts}<br>
-            Ends: ${s.ends}<br>
-            Activity: ${s.activity}`)
-        )).addTo(map);
+        /* =========================
+           LEFT SIDE
+        ========================= */
 
-        // Auto-zoom to fit all stations
-        const bounds = L.latLngBounds(stations.map(s => [s.lat, s.lon]));
-        map.fitBounds(bounds);
-      }
-    });
+        .controls {
+            width: 30%;
 
-    // Build heat datasets
-    function makeHeat(mult) {
-      return {
-        starts: stations.map(s => [s.lat, s.lon, s.starts * mult]),
-        ends:   stations.map(s => [s.lat, s.lon, s.ends * mult]),
-        total:  stations.map(s => [s.lat, s.lon, s.activity * mult])
-      };
-    }
+            background: white;
+            padding: 30px;
 
-    // Intensity slider
-    const slider = document.getElementById("intensitySlider");
-    const label = document.getElementById("sliderValue");
+            border-radius: 12px;
 
-    slider.addEventListener("input", () => {
-      multiplier = parseFloat(slider.value);
-      label.innerText = multiplier.toFixed(1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 
-      const heatData = makeHeat(multiplier);
-      if (startsLayer) startsLayer.setLatLngs(heatData.starts);
-      if (endsLayer)   endsLayer.setLatLngs(heatData.ends);
-      if (totalLayer)  totalLayer.setLatLngs(heatData.total);
-    });
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
 
-    // Toggle function
-    function toggleLayer(layer) {
-      if (map.hasLayer(layer)) {
-        map.removeLayer(layer);
-      } else {
-        map.addLayer(layer);
-      }
-    }
-  </script>
+        .control {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control label {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+
+        /* =========================
+           SLIDER
+        ========================= */
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .slider-row input[type="range"] {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* Text displayed to the right
+           of the slider */
+
+        .slider-value {
+            min-width: 90px;
+
+            white-space: nowrap;
+
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+
+        /* Slider line */
+
+        input[type="range"] {
+            appearance: none;
+
+            width: 100%;
+            height: 6px;
+
+            background: #ddd;
+
+            border-radius: 5px;
+
+            outline: none;
+        }
+
+
+        /* Chrome / Safari */
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+
+            width: 18px;
+            height: 18px;
+
+            border-radius: 50%;
+
+            background: #222;
+
+            cursor: pointer;
+        }
+
+
+        /* Firefox */
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+
+            border: none;
+
+            border-radius: 50%;
+
+            background: #222;
+
+            cursor: pointer;
+        }
+
+
+        /* =========================
+           DROPDOWN
+        ========================= */
+
+        select {
+            width: 100%;
+
+            padding: 12px;
+
+            border: 1px solid #ccc;
+
+            border-radius: 6px;
+
+            background: white;
+
+            font-size: 15px;
+
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+
+            border-color: #555;
+        }
+
+
+        /* =========================
+           RIGHT SIDE
+        ========================= */
+
+        .preview {
+            width: 70%;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            background: white;
+
+            border-radius: 12px;
+
+            padding: 20px;
+
+            box-shadow:
+                0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .preview img {
+            max-width: 100%;
+            max-height: 80vh;
+
+            width: auto;
+            height: auto;
+
+            object-fit: contain;
+
+            border-radius: 8px;
+        }
+
+
+        /* =========================
+           MOBILE
+        ========================= */
+
+        @media (max-width: 768px) {
+
+            .container {
+                flex-direction: column;
+
+                padding: 20px;
+            }
+
+            .controls,
+            .preview {
+                width: 100%;
+            }
+
+            .preview {
+                min-height: 300px;
+            }
+        }
+
+    </style>
+</head>
+
+
+<body>
+
+
+    <div class="container">
+
+
+        <!-- =================================
+             LEFT SIDE
+        ================================== -->
+
+        <div class="controls">
+
+
+            <!-- =================================
+                 OPTION 1 - SLIDER
+            ================================== -->
+
+            <div class="control">
+    <label for="option1">V Grade Min:</label>
+
+    <div class="slider-row">
+        <input
+            type="range"
+            id="option1"
+            min="0"
+            max="10"
+            step="1"
+            value="7"
+        >
+
+        <span class="slider-value">V
+            <span id="option1-value">7</span>
+        </span>
+    </div>
+</div>
+
+
+
+            <!-- =================================
+                 OPTION 2 - SLIDER
+            ================================== -->
+
+            <div class="control">
+
+                <label for="option2">
+                    V Grade Max
+                </label>
+
+                <div class="slider-row">
+
+                    <input
+                        type="range"
+                        id="option2"
+                        min="0"
+                        max="10"
+                        value="8"
+                    >
+
+                    <span class="slider-value">
+                        V
+                        <span id="option2-value">8</span>
+                        
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================
+                 OPTION 3 - DROPDOWN
+            ================================== -->
+
+            <div class="control">
+<!--
+                <label for="option3">
+                    State
+                </label>
+
+                <select id="option3">
+-->
+
+<label>State:</label>
+      <select id="state">
+                    <option value="1" class="state">Alabama</option>
+         <option value="2">Alaska</option>
+         <option value="3">Arizona</option>
+         <option value="4">Arkansas</option>
+         <option value="5">California</option>
+         <option value="6">Colorado</option>
+         <option value="7">Connecticut</option>
+         <option value="8">Delaware</option>
+         <option value="9">Florida</option>
+         <option value="10">Georgia</option>
+         <option value="11">Hawaii</option>
+         <option value="12">Idaho</option>
+         <option value="13">Illinois</option>
+         <option value="14">Indiana</option>
+         <option value="15">Iowa</option>
+         <option value="16">Kansas</option>
+         <option value="17">Kentucky</option>
+         <option value="18">Louisiana</option>
+         <option value="19">Maine</option>
+         <option value="20">Maryland</option>
+         <option value="21">Massachusetts</option>
+         <option value="22">Michigan</option>
+         <option value="23">Minnesota</option>
+         <option value="24">Mississippi</option>
+         <option value="25">Missouri</option>
+         <option value="26">Montana</option>
+         <option value="27">Nebraska</option>
+         <option value="28">Nevada</option>
+         <option value="29">New Hampshire</option>
+         <option value="30">New Jersey</option>
+         <option value="31">New Mexico</option>
+         <option value="32">New York</option>
+         <option value="33">North Carolina</option>
+         <option value="34">North Dakota</option>
+         <option value="35">Ohio</option>
+         <option value="36">Oklahoma</option>
+         <option value="37">Oregon</option>
+         <option value="38">Pennsylvania</option>
+         <option value="39">Rhode Island</option>
+         <option value="40">South Carolina</option>
+         <option value="41">South Dakota</option>
+         <option value="42">Tennessee</option>
+         <option value="43">Texas</option>
+         <option value="44">Utah</option>
+         <option value="45">Vermont</option>
+         <option value="46">Virginia</option>
+         <option value="47">Washington</option>
+         <option value="48">West Virginia</option>
+         <option value="49">Wisconsin</option>
+         <option value="50">Wyoming</option>
+      </select>
+
+            </div>
+
+		 <button onclick="go()">Find</button>
+		 
+		 <br />
+      <img
+         id="stateImage"
+         src="https://static.thenounproject.com/png/5793250-200.png"
+         alt="Alabama"
+      />
+
+        </div>
+		
+
+
+        <!-- =================================
+             RIGHT SIDE
+        ================================== -->
+
+        <div class="preview">
+
+            <img
+         id="stateImageR"
+         src="https://static.thenounproject.com/png/alabama-icon-4140532-512.png"
+         alt="Alabama"
+      />
+        </div>
+
+
+    </div>
+
+
+    <!-- =================================
+         JAVASCRIPT
+    ================================== -->
+
+    <script>
+
+
+        /*
+         * OPTION 1
+         */
+
+        const option1 =
+            document.getElementById("option1");
+
+        const option1Value =
+            document.getElementById("option1-value");
+
+
+        option1.addEventListener("input", function () {
+
+            option1Value.textContent =
+                option1.value;
+
+        });
+
+
+        /*
+         * OPTION 2
+         */
+
+        const option2 =
+            document.getElementById("option2");
+
+        const option2Value =
+            document.getElementById("option2-value");
+
+
+        option2.addEventListener("input", function () {
+
+            option2Value.textContent =
+                option2.value;
+
+        });
+		
+		
+		
+		
+		
+		
+		
+		const statepicLookup = {
+            1: "5793250",
+            2: "5793289",
+            3: "5793269",
+            4: "5793243",
+            5: "5793267",
+            6: "5793255",
+            7: "5793253",
+            8: "5793245",
+            9: "5793248",
+            10: "5793257",
+            11: "5793254",
+            12: "5793244",
+            13: "5793247",
+            14: "5793249",
+            15: "5793252",
+            16: "5793262",
+            17: "5793292",
+            18: "5793285",
+            19: "5793258",
+            20: "5793260",
+            21: "5793259",
+            22: "5793291",
+            23: "5793279",
+            24: "5793273",
+            25: "5793280",
+            26: "5793256",
+            27: "5793261",
+            28: "5793290",
+            29: "5793282",
+            30: "5793270",
+            31: "5793274",
+            32: "5793276",
+            33: "5793251",
+            34: "5793281",
+            35: "5793246",
+            36: "5793288",
+            37: "5793286",
+            38: "5793266",
+            39: "5793275",
+            40: "5793265",
+            41: "5793287",
+            42: "5793268",
+            43: "5793284",
+            44: "5793283",
+            45: "5793263",
+            46: "5793264",
+            47: "5793272",
+            48: "5793271",
+            49: "5793277",
+            50: "5793278",
+         };
+		 
+		 
+		 
+		 
+		 const statepicRLookup = {
+            1: "4140532",
+2: "4140524",
+3: "4140523",
+4: "4140542",
+5: "4140535",
+6: "4140506",
+7: "4140521",
+8: "4140520",
+9: "4140541",
+10: "4140533",
+11: "4140505",
+12: "4140508",
+13: "4140539",
+14: "4140555",
+15: "4140510",
+16: "4140528",
+17: "4140518",
+18: "4140553",
+19: "4140522",
+20: "4140547",
+21: "4140545",
+22: "4140511",
+23: "4140527",
+24: "4140537",
+25: "4140513",
+26: "4140551",
+27: "4140531",
+28: "4140512",
+29: "4140519",
+30: "4140516",
+31: "4140554",
+32: "4140548",
+33: "4140546",
+34: "4140517",
+35: "4140526",
+36: "4140538",
+37: "4140552",
+38: "4140529",
+39: "4140509",
+40: "4140540",
+41: "4140534",
+42: "4140543",
+43: "4140550",
+44: "4140549",
+45: "4140515",
+46: "4140544",
+47: "4140525",
+48: "4140536",
+49: "4140514",
+50: "4140530"
+         };
+		 
+		 
+		  const stateSelect = document.getElementById("state");
+const stateImage = document.getElementById("stateImage");
+const stateImageR = document.getElementById("stateImageR");
+
+stateSelect.addEventListener("change", function () {
+
+    const stateId = this.value;
+    const stateName = this.options[this.selectedIndex].text;
+
+    // LEFT IMAGE — use left lookup
+    const leftImageId = statepicLookup[stateId];
+    const leftImageURL =
+        `https://static.thenounproject.com/png/${leftImageId}-200.png`;
+
+    // RIGHT IMAGE — use right lookup
+    const rightImageId = statepicRLookup[stateId];
+    const rightImageURL =
+        `https://static.thenounproject.com/png/${rightImageId}-512.png`;
+
+    // Fade out
+    stateImage.style.transition = "opacity 0.3s ease";
+    stateImageR.style.transition = "opacity 0.3s ease";
+
+    stateImage.style.opacity = "0";
+    stateImageR.style.opacity = "0";
+
+    setTimeout(() => {
+
+        // Update LEFT image
+        stateImage.src = leftImageURL;
+        stateImage.alt = stateName;
+
+        // Update RIGHT image
+        stateImageR.src = rightImageURL;
+        stateImageR.alt = stateName;
+
+        // Fade in
+        stateImage.style.opacity = "1";
+        stateImageR.style.opacity = "1";
+
+    }, 300);
+});
+
+
+
+
+
+
+
+
+ // Lookup tables
+         const gradeLookup = {
+           0: 20000,
+1: 20100,
+2: 20200,
+3: 20300,
+4: 20400,
+5: 20500,
+6: 20600,
+7: 20700,
+8: 20800,
+9: 20900,
+10: 21000,
+         };
+		 
+		 
+		 const stateLookup = {
+            1: "105905173",
+            2: "105909311",
+            3: "105708962",
+            4: "105901027",
+            5: "105708959",
+            6: "105708956",
+            7: "105806977",
+            8: "106861605",
+            9: "111721391",
+            10: "105897947",
+            11: "106316122",
+            12: "105708958",
+            13: "105911816",
+            14: "112389571",
+            15: "106092653",
+            16: "107235316",
+            17: "105868674",
+            18: "116720343",
+            19: "105948977",
+            20: "106029417",
+            21: "105908062",
+            22: "106113246",
+            23: "105812481",
+            24: "108307056",
+            25: "105899020",
+            26: "105907492",
+            27: "116096758",
+            28: "105708961",
+            29: "105872225",
+            30: "106374428",
+            31: "105708964",
+            32: "105800424",
+            33: "105873282",
+            34: "106598130",
+            35: "105994953",
+            36: "105854466",
+            37: "105708965",
+            38: "105913279",
+            39: "106842810",
+            40: "107638915",
+            41: "105708963",
+            42: "105887760",
+            43: "105835804",
+            44: "105708957",
+            45: "105891603",
+            46: "105852400",
+            47: "105708966",
+            48: "105855459",
+            49: "105708968",
+            50: "105708960",
+         };
+		 
+		 
+		 
+		 function go() {
+
+    // =========================
+    // SLIDERS
+    // =========================
+
+    const gradeMin = document.getElementById("option1").value;
+    const gradeMax = document.getElementById("option2").value;
+
+
+    // =========================
+    // STATE DROPDOWN
+    // =========================
+
+    const state = document.getElementById("state").value;
+
+
+    // =========================
+    // GRADE LOOKUP
+    // =========================
+
+    const gradeMinValue = gradeLookup[gradeMin];
+    const gradeMaxValue = gradeLookup[gradeMax];
+
+
+    // =========================
+    // MOUNTAIN PROJECT STATE ID
+    // =========================
+
+    const stateValue = stateLookup[state];
+
+
+    // =========================
+    // BUILD URL
+    // =========================
+
+    const url =
+        `https://www.mountainproject.com/route-finder` +
+        `?diffMaxboulder=${gradeMaxValue}` +
+        `&diffMinboulder=${gradeMinValue}` +
+        `&selectedIds=${stateValue}` +
+        `&sort1=title` +
+        `&sort2=area` +
+        `&stars=0` +
+        `&type=boulder` +
+        `&viewAll=1`;
+
+
+    // =========================
+    // OPEN MOUNTAIN PROJECT
+    // =========================
+
+    window.open(url, "_blank");
+}
+    </script>
+
+
 </body>
 </html>
